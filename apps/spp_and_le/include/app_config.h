@@ -18,10 +18,10 @@
 
 #define TCFG_MEDIA_LIB_USE_MALLOC		    1
 //apps example 选择,只能选1个,要配置对应的board_config.h
-#define CONFIG_APP_SPP_LE                 1 //SPP + LE or LE's client
+#define CONFIG_APP_SPP_LE                 0//SPP + LE or LE's client
 #define CONFIG_APP_MULTI                  0 //蓝牙LE多连 + spp
 #define CONFIG_APP_DONGLE                 0 //usb + 蓝牙(ble 主机),PC hid设备
-#define CONFIG_APP_CENTRAL                0 //ble client,中心设备
+#define CONFIG_APP_CENTRAL                1 //ble client,中心设备
 #define CONFIG_APP_LL_SYNC                0 //腾讯连连
 #define CONFIG_APP_BEACON                 0 //蓝牙BLE ibeacon
 #define CONFIG_APP_NONCONN_24G            0 //2.4G 非连接收发
