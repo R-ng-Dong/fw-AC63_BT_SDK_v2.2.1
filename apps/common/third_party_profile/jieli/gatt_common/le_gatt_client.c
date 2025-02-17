@@ -787,6 +787,38 @@ static bool __check_device_is_match(u8 event_type, u8 info_type, u8 *data, int s
  *  \note
  */
 /*************************************************************************************************/
+//RD_Edit: KP9 Remote Receive
+#include <string.h>
+#include "../../spp_and_le/examples/ble_central/rd_light_common.h"
+#include "../../spp_and_le/examples/ble_central/K9B_remote.h"
+typedef struct {
+	u8 lengt;       //add1
+	u8 type;
+	u16 Vid;    
+	u8 frame;       //add2
+   // u8 null_frame[3];
+	u32 Counter;    //add3
+	u8 type_device; //add4
+	u8 key;
+   // u8 null_key[2];
+	u32 signature;  //add5
+}switchKP9_proxy_t;
+//RD_EDIT: adv_report
+
+static u8 convert_reportData_2_K9bData(switchKP9_proxy_t *K9b_data, u8 *report_data){
+
+
+    K9b_data->lengt = (report_data[0]);
+    K9b_data->type = report_data[1];
+    K9b_data->Vid = (u16)(report_data[2] | (report_data[3] << 8));
+    K9b_data->frame = report_data[4];
+    K9b_data->Counter = (u32)(report_data[5] | (report_data[6] << 8) | (report_data[7] << 16) | (report_data[8] << 24));
+    K9b_data->type_device = report_data[9];
+    K9b_data->key = report_data[10];
+    K9b_data->signature = (u32)(report_data[11] | (report_data[12] << 8) | (report_data[13] << 16) | (report_data[14] << 24));
+
+}
+extern void set_led_stt(u8 stt_set);
 static bool __resolve_adv_report(adv_report_t *report_pt, u16 len)
 {
     u8 i, length, ad_type;
@@ -795,6 +827,46 @@ static bool __resolve_adv_report(adv_report_t *report_pt, u16 len)
     u32 tmp32;
     client_match_cfg_t *match_cfg = NULL;
 
+    #if(1)
+    u8 k9B_flag=0;
+    u8 k9b_adv_filler =0;
+    static uint32_t k9b_mac_last =0;
+    static uint32_t counter_last=0;
+    if(0x0f == report_pt->length){
+        printf(" length adv pass");
+        k9b_adv_filler =1;
+    }
+
+
+    if((report_pt->event_type == 0x03) && (1 == k9b_adv_filler)){
+            // H_error : alignment and pointer null
+        if(report_pt->data[0] == 0x0e){
+        switchKP9_proxy_t KP9_DataRec= {0};
+        convert_reportData_2_K9bData(&KP9_DataRec, &report_pt->data[0]);
+            
+            if((KP9_DataRec.type == 0xff)&&(KP9_DataRec.lengt == 0x0e)){
+                uint32_t MacK9B_Buff = (uint32_t) ( (report_pt->address[0]<<24) | (report_pt->address[1]<<16) | (report_pt->address[2]<<8) | (report_pt->address[3]) );
+                
+                
+                printf("K9B ---MAC: %08x - count:%d -key%x - rssi:%d  \n",MacK9B_Buff, KP9_DataRec.Counter, KP9_DataRec.key, report_pt->rssi);
+                if( (counter_last != KP9_DataRec.Counter) && ((KP9_DataRec.key & 0x80) != 0x80) ) // only check new rising press
+			    {
+                    counter_last = KP9_DataRec.Counter;
+                    printf("K9B ---MAC: %08x - count:%d -key%x \n",MacK9B_Buff, KP9_DataRec.Counter, KP9_DataRec.key);
+
+                    RD_K9B_check_saveAndDelete(MacK9B_Buff, KP9_DataRec.Counter, KP9_DataRec.type_device, KP9_DataRec.key);
+
+                    RD_K9B_ScanOnOff(MacK9B_Buff, KP9_DataRec.key, KP9_DataRec.Counter);
+                    k9B_flag=1;
+                    // if(1 == KP9_DataRec.key) rd_light_set_dim_cct100(100, 0); //set_led_stt(1);
+                    // if(2 == KP9_DataRec.key) rd_light_set_dim_cct100(0, 100); //set_led_stt(0);
+                    put_buf(report_pt->data, report_pt->length);
+                }
+            }
+        }
+    }
+    #endif
+    
     if (__check_device_is_match(report_pt->event_type, CLI_CREAT_BY_ADDRESS, report_pt->address, 6, &match_cfg)) {
         find_remoter = 1;
         log_info("catch mac ok\n");
@@ -911,10 +983,11 @@ just_creat:
  *
  *  \note
  */
+// RD_EDIT: BEL scan param
 /*************************************************************************************************/
 static const struct create_conn_param_ext_t create_default_param_table = {
     .le_scan_interval = 24,
-    .le_scan_window = 8,
+    .le_scan_window = 24,
     .initiator_filter_policy = 0,
     .peer_address_type = 0,
     .peer_address = {0, 0, 0, 0, 0, 0},

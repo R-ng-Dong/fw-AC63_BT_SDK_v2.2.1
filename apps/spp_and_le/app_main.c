@@ -15,6 +15,8 @@
 #include "app_power_manage.h"
 #include "asm/charge.h"
 
+#include "examples/ble_central/rd_light_common.h"
+#include "examples/ble_central/K9B_remote.h"
 #if TCFG_KWS_VOICE_RECOGNITION_ENABLE
 #include "jl_kws/jl_kws_api.h"
 #endif /* #if TCFG_KWS_VOICE_RECOGNITION_ENABLE */
@@ -63,7 +65,7 @@ const struct task_info task_info_table[] = {
 #endif
     {0, 0},
 };
-
+static u8 rd_flash_data[512] __attribute__ ((aligned(4)));
 APP_VAR app_var;
 
 void app_var_init(void)
@@ -72,7 +74,7 @@ void app_var_init(void)
 
     app_var.auto_off_time =  TCFG_AUTO_SHUT_DOWN_TIME;
     app_var.warning_tone_v = 340;
-    app_var.poweroff_tone_v = 330;
+    app_var.poweroff_tone_v = 300;
 }
 
 __attribute__((weak))
@@ -110,7 +112,59 @@ void check_power_on_key(void)
 #endif
 }
 
+static void central_timer_handle_test(void)
+{
+    rd_light_check_ctrl_pwm();
+    /*
+    static u8 led_stt_last =2;
+    static u16 dim_stt_last =0;
+     //led_stt != led_stt;
+    //  if(led_stt == 1) led_stt = 0;
+    //  else        led_stt = 1;
+    if(led_stt_last != led_stt){
+    //log_info("light \n");
+        led_stt_last =led_stt;
+        if(led_stt){
+        //  set_timer_pwm_duty(JL_TIMER2, 5000);   
+        // gpio_direction_output(IO_PORTA_09, led_stt);   //GPIO输出
+        // gpio_set_output_value(IO_PORTA_09, led_stt);   //GPIO输出
+        }
+        else{
+                    //  set_timer_pwm_duty(JL_TIMER2, 0);   
+         //gpio_direction_output(IO_PORTA_09, led_stt);   //GPIO输出
+        //   gpio_set_output_value(IO_PORTA_09, led_stt);   //GPIO输出
+        }
+    }
+    if(dim_stt_last != dim_10000){
+        if(dim_stt_last < dim_10000){
+            dim_stt_last += 10;
+            dim_stt_last = MIN(dim_stt_last, 10000);
+        }
+        if(dim_stt_last >dim_10000){
+            dim_stt_last -= 10;
+            dim_stt_last = MAX(0, dim_stt_last);
+        }
 
+        // set_timer_pwm_duty(JL_TIMER3, dim_stt_last);
+        //  set_timer_pwm_duty(JL_TIMER2, dim_stt_last/2);
+    }
+    */
+
+} 
+
+static void central_timer_handle_test2(void)
+{
+    static u8 led_stt_last =2;
+    static u16 dim_stt_last =0;
+    static u8 set_ctrl_df =0;
+    if((set_ctrl_df == 0) && (sys_timer_get_ms() > START_DIM_AFTER_POWERUP_MS)){
+        set_ctrl_df =1;
+        rd_light_set_dim_cct100(DIM_POWERUP_DF, CCT_POWERUP_DF);
+    }
+    log_info("task main %d- Wdt:%d \n", sys_timer_get_ms(), wdt_get_time());
+    
+
+}
 void app_main()
 {
     struct intent it;
@@ -208,9 +262,16 @@ void app_main()
 
     log_info("run app>>> %s", it.name);
     log_info("%s,%s", __DATE__, __TIME__);
-
     start_app(&it);
 
+    put_buf(rd_flash_data, 16);
+   
+    rd_light_init();
+
+    RD_K9B_Pair_OnOffSetFlag(1);
+    rd_light_set_dim_cct100(0, CCT_POWERUP_DF);
+    sys_timer_add(NULL, central_timer_handle_test2, 1000);
+        sys_timer_add(NULL, central_timer_handle_test, 10); 
 #if TCFG_CHARGE_ENABLE
     set_charge_event_flag(1);
 #endif

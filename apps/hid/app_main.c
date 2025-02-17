@@ -70,7 +70,7 @@ void app_var_init(void)
 
     app_var.auto_off_time =  TCFG_AUTO_SHUT_DOWN_TIME;
     app_var.warning_tone_v = 340;
-    app_var.poweroff_tone_v = 330;
+    app_var.poweroff_tone_v = 300;
 }
 
 __attribute__((weak))
