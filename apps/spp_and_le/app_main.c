@@ -114,7 +114,13 @@ void check_power_on_key(void)
 
 static void central_timer_handle_test(void)
 {
+
     rd_light_check_ctrl_pwm();
+    rd_light_check_save_cct();
+    
+    #if(CHANGE_CCT_BY_GPIO_EN)
+      rd_light_check_CCT_Pin(); // change cct by GPIO when power off
+    #endif
     /*
     static u8 led_stt_last =2;
     static u16 dim_stt_last =0;
@@ -157,9 +163,13 @@ static void central_timer_handle_test2(void)
     static u8 led_stt_last =2;
     static u16 dim_stt_last =0;
     static u8 set_ctrl_df =0;
-    if((set_ctrl_df == 0) && (sys_timer_get_ms() > START_DIM_AFTER_POWERUP_MS)){
+    if((set_ctrl_df == 0) && (sys_timer_get_ms() > 500)){ //START_DIM_AFTER_POWERUP_MS)){
         set_ctrl_df =1;
-        rd_light_set_dim_cct100(DIM_POWERUP_DF, CCT_POWERUP_DF);
+        rd_light_set_dim_cct100(DIM_POWERUP_DF, rd_flash_get_cct());
+    }
+
+    if((sys_timer_get_ms() > 5000)){ //START_DIM_AFTER_POWERUP_MS)){
+
     }
     log_info("task main %d- Wdt:%d \n", sys_timer_get_ms(), wdt_get_time());
     
@@ -265,13 +275,14 @@ void app_main()
     start_app(&it);
 
     put_buf(rd_flash_data, 16);
-   
+
+
     rd_light_init();
 
     RD_K9B_Pair_OnOffSetFlag(1);
-    rd_light_set_dim_cct100(0, CCT_POWERUP_DF);
+    //rd_light_set_dim_cct100(4, rd_flash_get_cct());
     sys_timer_add(NULL, central_timer_handle_test2, 1000);
-        sys_timer_add(NULL, central_timer_handle_test, 10); 
+    sys_timer_add(NULL, central_timer_handle_test, 10); 
 #if TCFG_CHARGE_ENABLE
     set_charge_event_flag(1);
 #endif

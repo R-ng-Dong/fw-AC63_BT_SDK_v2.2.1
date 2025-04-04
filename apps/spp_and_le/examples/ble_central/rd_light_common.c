@@ -18,19 +18,32 @@ const uint16_t DIM_LUMEN_TO_PWM[101] = {
 };
 volatile  rd_light_ctrl_t rd_light_ctrl_val = {0};
 static void rd_gpio_init(void);
-
-
+void rd_flash_powerup_init(void);
+static inline uint16_t dim_cct_2_pwm(uint8_t dim_cct100);
+volatile  rd_Flash_powerUp_data_t rd_Flash_powerup_Val = {0};
 void rd_light_init(void){
     rd_K9B_flash_init(); 
+    rd_flash_powerup_init();
     rd_gpio_init();   
 
     printf("Rang Dong DownLight DM BLE V%02d.%02d.01", FIRMWARE_VER_H, FIRMWARE_VER_L);
 }
 
 static void rd_gpio_init(void){
-  timer_pwm_init(DIM_PWM_TIMER, DIM_PIN, PWM_HZ, 0); //1KHz 50%
+  timer_pwm_init(DIM_PWM_TIMER, DIM_PIN, PWM_HZ, (u32) dim_cct_2_pwm(5)); //1KHz 50%
+
   timer_pwm_init(CCT_PWM_TIMER, CCT_PIN, PWM_HZ, 0); //1KHz 50%
-  
+  rd_light_ctrl_val.dim_present =5;
+  rd_light_ctrl_val.dim_target =5;
+
+  #if(CHANGE_CCT_BY_GPIO_EN)
+    gpio_direction_input(DETECT_POWER_PIN);
+    gpio_set_pull_up(DETECT_POWER_PIN, 1);
+   // gpio_set_pull_down(DETECT_POWER_PIN, 0);
+ #endif
+
+//   gpio_direction_input(DETECT_POWER_PIN);
+//   gpio_set_pull_down(DETECT_POWER_PIN, 1);
 }
 
 
@@ -84,6 +97,7 @@ void rd_light_check_ctrl_pwm(void){
             rd_light_ctrl_val.cct_present -= CCT_STEP;
         }
         set_timer_pwm_duty(CCT_PWM_TIMER, dim_cct_2_pwm(rd_light_ctrl_val.cct_present));
+     
        // set_timer_pwm_duty(JL_TIMER2, dim_stt_last/2);
 
     }
@@ -102,4 +116,116 @@ void rd_light_check_ctrl_pwm(void){
        // set_timer_pwm_duty(JL_TIMER2, dim_stt_last/2);
     }
 
+}
+
+void rd_light_check_CCT_Pin(void){
+    static uint8_t power_pin_stt[4] = {0}; // 0-1-2-3 is last to now
+    static uint8_t cct_stt = 0;
+
+    power_pin_stt[0] = power_pin_stt[1];
+    power_pin_stt[1] = power_pin_stt[2];
+    power_pin_stt[2] = power_pin_stt[3];  
+
+    power_pin_stt[3] = gpio_read(DETECT_POWER_PIN);
+
+    if( power_pin_stt[3] != 0 ){
+        rd_light_set_cct100(0);
+    }
+
+    // if( (power_pin_stt[0] == 0) && (power_pin_stt[1] == 0) && (power_pin_stt[2] != 0) && (power_pin_stt[3] != 0) ){
+    //     cct_stt = get_next_cct_level(cct_stt);
+    //     rd_light_set_cct100(cct_stt);
+    //     rd_flash_save_cct(cct_stt);
+    //     printf("CCT pin change to %d\n", cct_stt);
+    // }
+    
+}
+void rd_light_check_save_cct(void){
+    static uint32_t clk_time_last_ms = 0;
+    static uint8_t change_cct_timeout = 0;
+    if(clk_time_last_ms > sys_timer_get_ms()){
+        clk_time_last_ms = sys_timer_get_ms();
+    }
+
+    if(sys_timer_get_ms() - clk_time_last_ms > 3000){
+
+        clk_time_last_ms = sys_timer_get_ms();
+        if( (rd_Flash_powerup_Val.cct_last != rd_light_ctrl_val.cct_present)){
+            rd_flash_save_cct(rd_light_ctrl_val.cct_present);
+       }
+    }
+
+
+    /*----------------------Check timeout cct-----------------*/
+    if( (change_cct_timeout == 0) && (sys_timer_get_ms() > TIMEOUT_CHANGE_CCT_MS)){
+        change_cct_timeout = 1;
+        rd_flash_save_timeOutFlag(0);
+        printf("------------------time out cct-------------------\n");
+    }
+}
+
+uint8_t get_next_cct_level(uint8_t cct_level_last){
+    switch (cct_level_last)
+    {
+    case CCT_LEVEL1:
+        return CCT_LEVEL2;
+        break;
+    case CCT_LEVEL2:
+        return CCT_LEVEL3;
+        break;
+    case CCT_LEVEL3:
+        return CCT_LEVEL1;
+        break;
+    default:
+        return CCT_LEVEL1;
+        break;
+    }
+}
+/*----------------------flash powerup-----------------*/
+
+void rd_flash_powerup_saveDF(void){
+    rd_Flash_powerup_Val.Factory_Check = FLASH_INITED_CODE;
+    rd_Flash_powerup_Val.dim_last = DIM_POWERUP_DF;
+    rd_Flash_powerup_Val.cct_last = CCT_POWERUP_DF;
+    rd_Flash_powerup_Val.eraser_counter = 0;
+    rd_Flash_powerup_Val.timeout_powerup_flag = 0;
+    syscfg_write(CFG_VM_RD_POWERUP, &rd_Flash_powerup_Val, sizeof(rd_Flash_powerup_Val));
+
+    printf("flash powerup save default\n");
+}
+
+void rd_flash_powerup_init(void){
+    int ret = syscfg_read(CFG_VM_RD_POWERUP, &rd_Flash_powerup_Val, sizeof(rd_Flash_powerup_Val));
+    printf("flash powerup read [write:%d]", ret);
+
+    if(FLASH_INITED_CODE != rd_Flash_powerup_Val.Factory_Check){
+        rd_flash_powerup_saveDF();
+        syscfg_read(CFG_VM_RD_POWERUP, &rd_Flash_powerup_Val, sizeof(rd_Flash_powerup_Val));
+    }
+    printf("dim_last:%d - cct_last:%d - eraser_counter:%d\n", rd_Flash_powerup_Val.dim_last, rd_Flash_powerup_Val.cct_last, rd_Flash_powerup_Val.eraser_counter);
+
+    if(rd_Flash_powerup_Val.timeout_powerup_flag){
+        rd_Flash_powerup_Val.cct_last = get_next_cct_level(rd_Flash_powerup_Val.cct_last);
+        printf("Set next cct level:%d\n", rd_Flash_powerup_Val.cct_last);
+        rd_flash_save_cct(rd_Flash_powerup_Val.cct_last);
+    }
+    rd_flash_save_timeOutFlag(1);
+
+}
+
+void rd_flash_save_timeOutFlag(uint8_t flag){
+    rd_Flash_powerup_Val.timeout_powerup_flag = flag;
+    rd_Flash_powerup_Val.eraser_counter++;
+    syscfg_write(CFG_VM_RD_POWERUP, &rd_Flash_powerup_Val, sizeof(rd_Flash_powerup_Val));
+    printf("save time out flag:%d\n", flag);
+}
+void rd_flash_save_cct(uint8_t cct){
+    rd_Flash_powerup_Val.cct_last = cct;
+    rd_Flash_powerup_Val.eraser_counter++;
+    syscfg_write(CFG_VM_RD_POWERUP, &rd_Flash_powerup_Val, sizeof(rd_Flash_powerup_Val));
+    printf("save cct:%d\n", cct);
+}
+
+uint8_t rd_flash_get_cct(void){
+    return rd_Flash_powerup_Val.cct_last;
 }

@@ -13,6 +13,7 @@ volatile  sw_press_K9BHC_t   Sw_Press_K9BHC_Val;
 const uint32_t CODE_CHECK_FLASH  = 0x55AA55AA;
 
 volatile  rd_Flash_K9BData_t rd_Flash_K9BData_Val = {0};
+
 /*--------------------------Remote K9B ---------------------------------*/
 
 void rd_K9B_flash_save_default(){
